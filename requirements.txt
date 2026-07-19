@@ -122,4 +122,5 @@ python-dotenv
 ruff
 tqdm
 bs4
+Lxml
 -e .
