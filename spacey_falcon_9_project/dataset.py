@@ -171,11 +171,23 @@ def transform_ll2_launches(json_path: str | Path) -> pd.DataFrame:
     data_df = data_df.drop("net", axis=1)
 
     # Derived column - outcome
-    data_df["outcome"] = data_df["landing_success"].astype(str) + " " + data_df["landing_type"]
+    def to_str(entry: Any) -> str:
+        """
+        Utility function to convert any object to str.
+        If the object is None, function returns the string 'None'
+
+        :param entry: object to be converted to string.
+        """
+        if entry is None:
+            return 'None'
+        else:
+            return str(entry)
+
+    data_df["outcome"] = data_df["landing_success"].map(to_str) + " " + data_df["landing_type"].map(to_str)
     data_df = data_df.drop(["landing_success", "landing_type"], axis=1)
 
     # Drop missing values in launch designator and outcome
-    data_df = data_df.dropna(subset=["launch_designator", "outcome"])
+    data_df = data_df.dropna(subset="launch_designator")
 
     return data_df
 
