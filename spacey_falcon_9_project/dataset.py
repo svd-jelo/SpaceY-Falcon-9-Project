@@ -1,12 +1,13 @@
 from itertools import islice
+import json
 from pathlib import Path
 import re
 import time
+from typing import Any
 
 from bs4 import BeautifulSoup
 import pandas as pd
 import requests
-import json
 
 #=====================================================================================================================
 # DATA COLLECTION PART 1 - FROM API
@@ -85,6 +86,193 @@ def download_launch_data_static(url: str, file_name: str, query_params=None, hea
         print("Error: {}".format(e))
         return None
 
+# Partial Data Transformation - Merging LL2 launch, GCAT launch, and Course-provided launch data
+def merge_ll2_launch_data(json_paths: list[Path], merged_path: None|Path = None) -> Path:
+    """
+    Function to merge LL2 launches that were extracted and downloaded with the download_all_ll2_launches() function
+    :param json_paths: list[Path]; file paths to the paginated files. Particularly, the returned output of the
+                       download_all_ll2_launches() function
+    :param merged_path: None or Path; path to the merged files. If not specified, the merged file will be saved in
+                        the current working directory.
+    """
+
+    merged = []
+    for path in json_paths:
+        with open(path, 'r') as f:
+            launch_page = json.load(f)
+        merged.extend(launch_page['results'])
+
+    if merged_path is None:
+        merged_path = Path.cwd() / 'll2-api-2.3.0-launches-previous-merged.json'
+
+    with open(merged_path, 'w') as f:
+        json.dump(merged, f)
+
+    return merged_path
+
+def get_path(d: dict, path: str) -> Any:
+    """
+    A utility function for quickly accessing items in a nested dictionary
+    from a specified string of keys joined by dots '.'
+
+    :param d: dict; nested dictionary containing items to be accessed
+    :param path: str; string of keys joined by dots '.'
+    :return: None or Any; the item to be accessed, whatever its type
+    """
+    for key in path.split("."):
+        if isinstance(d, list):
+            d = d[0]
+        d = d.get(key) if isinstance(d, dict) else None
+    return d
+
+def transform_ll2_launches(json_path: str | Path) -> pd.DataFrame:
+    """
+    A function to transform LL2 raw data given as a JSON file path
+
+    :param json_path: str or Path; local path to the JSON file containing raw ll2 launches data
+    :return: pd.DataFrame; transformed LL2 launch data containing relevant columns for analysis, but requires further wrangling
+    """
+    with open(json_path, "r") as f:
+        data_json = json.load(f)
+
+    json_keys = dict(
+        launch_designator="launch_designator",
+        net="net",
+        booster_version="rocket.configuration.name",
+        orbit="mission.orbit.name",
+        launch_site="pad.name",
+        landing_success="rocket.launcher_stage.landing.success",
+        landing_type="rocket.launcher_stage.landing.type.abbrev",
+        flights="rocket.launcher_stage.launcher.flights",
+        reused="rocket.launcher_stage.reused",
+        landing_pad="rocket.launcher_stage.landing.landing_location.abbrev",
+        block="rocket.configuration.variant",
+        flight_number="rocket.launcher_stage.launcher_flight_number",
+        serial="rocket.launcher_stage.launcher.serial_number",
+        longitude="pad.longitude",
+        latitude="pad.latitude",
+    )
+
+    launch_dict = {}
+    for col, path in json_keys.items():
+        col_values = []
+        for launch in data_json:
+            col_values.append(get_path(launch, path))
+        launch_dict.update({col: col_values})
+
+    data_df = pd.DataFrame(launch_dict)
+
+    # Derived column - reused_count
+    data_df["reused_count"] = data_df["flight_number"] - 1
+    data_df = data_df.drop("flight_number", axis=1)
+
+    # Derived column - launch_date
+    data_df["launch_date"] = pd.to_datetime(data_df["net"]).dt.date
+    data_df = data_df.drop("net", axis=1)
+
+    # Derived column - outcome
+    data_df["outcome"] = data_df["landing_success"].astype(str) + " " + data_df["landing_type"]
+    data_df = data_df.drop(["landing_success", "landing_type"], axis=1)
+
+    # Drop missing values in launch designator and outcome
+    data_df = data_df.dropna(subset=["launch_designator", "outcome"])
+
+    return data_df
+
+def transform_gcat_data(gcat_path: str | Path) -> pd.DataFrame:
+    """
+    Function to transform GCAT raw data from the specified file path
+    :param gcat_path: str or Path; file path to the GCAT raw data.
+    :return: pd.DataFrame; dataframe containing relevant data from GCAT
+    """
+
+    gcat_df = pd.read_csv(gcat_path, sep="\t", skiprows=(lambda x: x in [1]))
+
+    pattern = r"^\d{4}\s+\w{3}\s+\d{1,2}"
+    format_date = re.compile(pattern)
+    launch_date = gcat_df["Launch_Date"].map(lambda x: format_date.match(x).group())
+    gcat_df["launch_date"] = pd.to_datetime(launch_date).dt.date
+
+    gcat_df = gcat_df[["#Launch_Tag", "launch_date", "OrbPay"]]
+    gcat_df = gcat_df.rename(
+        columns={"#Launch_Tag": "launch_designator"}
+    )  # rename '#Launch_Tag' to launch designator
+    gcat_df["launch_designator"] = gcat_df[
+        "launch_designator"
+    ].str.strip()  # remove trailing white spaces from launch_designator column
+
+    return gcat_df
+
+def transform_course_data(course_path: str | Path) -> pd.DataFrame:
+    """
+    Function to transform course-provided static JSON raw data from the specified path
+
+    :param course_path: str or Path; file path to the JSON raw data
+    :return: pd.DataFrame; containing relevant data from the course-provided data
+    """
+
+    with open(course_path, "r") as f:
+        json_data = json.load(f)
+
+    json_keys = {"date_utc": "date_utc", "gridfins": "cores.gridfins", "legs": "cores.legs"}
+
+    course_dict = {}
+    for col, key in json_keys.items():
+        cols = []
+        for launch in json_data:
+            cols.append(get_path(launch, key))
+        course_dict.update({col: cols})
+
+    course_df = pd.DataFrame(course_dict)
+
+    course_df["launch_date"] = pd.to_datetime(course_df["date_utc"]).dt.date
+    course_df = course_df.drop("date_utc", axis=1)
+
+    return course_df
+
+def merge_launch_data(ll2_df: pd.DataFrame, gcat_df: pd.DataFrame, course_df: pd.DataFrame, csv_path: None|str|Path = None) -> None|Path:
+    """
+    Function to merge transformed ll2 launches data, transformed GCAT launch data, and transformed course data.
+    ll2 launches and gcat data will be merged on `launch_designator`, and resulting merged DataFrame will be merged
+    with course data on `launch_date`. Each merge is a one-to-one inner join. The final merged DataFrame will be
+    saved to `csv_path`
+
+    :param ll2_df: pd.DataFrame; transformed ll2 data
+    :param gcat_df: pd.DataFrame; transformed gcat data
+    :param course_df: pd.DataFrame; transformed course data
+    :param csv_path: None or str or Path; Default None. File path where merged DataFrame is to be saved. If None,
+                     merged DataFrame will be saved in the current working directory
+    :return: Path; csv_path
+    """
+
+    if not csv_path:
+        csv_path = Path.cwd() / 'launch_data_1.csv'
+
+    if isinstance(csv_path, str):
+        csv_path = Path(csv_path)
+
+    # Merge LL2 and GCAT
+    merged_df = ll2_df.merge(gcat_df, on='launch_designator', how='inner', validate='1:1')
+
+    mask = (merged_df['launch_date_x'] == merged_df['launch_date_y'])
+    if mask.all():
+        merged_df['launch_date'] = merged_df['launch_date_x']
+        merged_df = merged_df.drop(['launch_date_x', 'launch_date_y'], axis=1)
+    else:
+        raise Exception('Mismatch: launch_date in LL2 Launches does not match with launch_date in GCAT Launches')
+
+    # Drop launches with overlapping dates
+    counts = merged_df['launch_date'].value_counts()
+    duplicate_dates = merged_df[merged_df['launch_date'].map(lambda x: x in counts[counts>1].index)]
+    merged_df = merged_df.drop(index=duplicate_dates.index)
+
+    # Merge Course DF
+    merged_df = merged_df.merge(course_df, on='launch_date', how='inner', validate='1:1')
+
+    # Convert DF to CSV
+    merged_df.to_csv(csv_path, index=False)
+
+    return csv_path
 
 # Download LL2 API Launches Data
 #download_all_ll2_launches()
