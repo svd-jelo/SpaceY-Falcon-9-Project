@@ -286,6 +286,59 @@ def merge_launch_data(ll2_df: pd.DataFrame, gcat_df: pd.DataFrame, course_df: pd
 
     return csv_path
 
+def add_class(launch_csv: str | Path, save_path: None | str | Path = None) -> None | Path:
+    """
+    Function that adds the target 'Class' column to the launch data from the specified launch csv path,
+    and saves the result to the specified save path.
+
+    :param launch_csv: str or Path; file path to the launches csv file
+    :param save_path: str or Path; Default None; file path where the result is to be saved. If None,
+                      result will be saved in the current working directory.
+    :return save_path: Path; file path where result is saved.
+    """
+    try:
+        launch_df = pd.read_csv(launch_csv)
+
+    except Exception as e:
+        print(e)
+        return None
+
+    landing_outcomes = launch_df["outcome"].unique()
+
+    bad_outcomes = set()
+    for outcome in landing_outcomes:
+        if "False" in outcome or "None" in outcome:
+            bad_outcomes.add(outcome)
+
+    def outcome_map(entry: str) -> int:
+        """
+        Utility function that maps an outcome to either the integer 1 or 0.
+        If the outcome is a landing success, the function returns 1; otherwise,
+        the function returns 0
+
+        :param entry: str; a landing outcome in the format "(Landing Success) (Landing Pad)", e.g., True ASDS.
+        :return outcome: int; if the entry is a landing success, `outcome=1`; otherwise, `outcome=0`.
+        """
+
+        if entry in bad_outcomes:
+            landing_outcome = 0
+        else:
+            landing_outcome = 1
+
+        return landing_outcome
+
+    launch_df["class"] = launch_df["outcome"].map(outcome_map)
+
+    if not save_path:
+        save_path = Path.cwd() / "api-launch-data-table-class.csv"
+
+    if isinstance(save_path, str):
+        save_path = Path(save_path)
+
+    launch_df.to_csv(save_path, index=False)
+
+    return save_path
+
 # Download LL2 API Launches Data
 #download_all_ll2_launches()
 
