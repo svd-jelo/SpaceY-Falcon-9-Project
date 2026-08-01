@@ -122,5 +122,8 @@ python-dotenv
 ruff
 tqdm
 bs4
-Lxml
+lxml
+ipython-sql
+prettytable
+seaborn
 -e .
