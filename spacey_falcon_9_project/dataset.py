@@ -303,6 +303,9 @@ def add_class(launch_csv: str | Path, save_path: None | str | Path = None) -> No
         print(e)
         return None
 
+    # Drop NaN or NA values
+    launch_df.dropna(axis=0, inplace=True)
+
     landing_outcomes = launch_df["outcome"].unique()
 
     bad_outcomes = set()

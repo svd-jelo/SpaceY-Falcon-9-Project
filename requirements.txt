@@ -126,4 +126,13 @@ lxml
 ipython-sql
 prettytable
 seaborn
+folium
+wget
 -e .
+topojson
+geopandas
+shapely
+plotly
+dash
+dash_bootstrap_components
+scikit-learn
