@@ -6,8 +6,12 @@ import time
 from typing import Any
 
 from bs4 import BeautifulSoup
+import geopandas as gpd
 import pandas as pd
 import requests
+from shapely.geometry import Point
+import topojson as tp
+from tqdm import tqdm
 
 #=====================================================================================================================
 # DATA COLLECTION PART 1 - FROM API
@@ -492,3 +496,232 @@ def launches_html_to_csv(html_path: str|Path, csv_path:None|str = None) -> None|
     launches_df.to_csv(csv_path, index=False)
 
     return csv_path
+
+#=====================================================================================================================
+# GEODATA -- Addition of columns for distance to nearest highway, railway, and coastline
+#=====================================================================================================================
+def download_layers_data(folder_path: None | str | Path = None) -> dict[str, Path]:
+    """
+    Function for downloading geodata for highways, railways, and coastlines
+
+    :param folder_path: None, str, or Path; default None; folder path where geodata are cached
+                        if None, the files are saved in the default path:
+                        parent directory > data/external
+
+    :return: dict[str, Path]; Dictionary of file paths.
+    """
+    if not folder_path:
+        folder_path = Path.cwd().parent / "data/external"
+    else:
+        folder_path = Path(folder_path)
+
+    folder_path.mkdir(parents=True, exist_ok=True)
+
+    # File Paths
+    file_paths = {
+        "US roadmap": folder_path / "us_road_map.json",
+        "US railways": folder_path / "us_railways.geojson",
+        "Global coastline": folder_path / "ne_coastline.zip",
+        "Florida coastline": folder_path / "florida_coastline.geojson",
+    }
+
+    # URLs
+    urls = [
+        # US Roads
+        "https://gist.githubusercontent.com/bricedev/96d2113bd29f60780223/raw/957d51ac88a6de442cf73b9efa8615fce9f9577e/usroads.json",
+        # US Railways
+        "/".join(
+            [
+                "https://services.arcgis.com",
+                "xOi1kZaI0eWDREZv",
+                "arcgis",
+                "rest",
+                "services",
+                "NTAD_North_American_Rail_Network_Lines",
+                "FeatureServer",
+                "replicafilescache",
+                "NTAD_North_American_Rail_Network_Lines_-5214657740406327753.geojson",
+            ]
+        ),
+        # Global Coastline Data - from Natural Earth
+        "https://naciscdn.org/naturalearth/10m/physical/ne_10m_coastline.zip",
+        # Florida Coastline Data - from ArcGIS
+        "https://hub.arcgis.com/api/v3/datasets/eda0c60e98cd43af9422dc5ea54d8d56_2/downloads/data?format=geojson&spatialRefId=4326&where=1%3D1",
+    ]
+
+    for key, file, url in zip(file_paths.keys(), file_paths.values(), urls):
+        if not file.is_file():
+            with requests.get(url, stream=True) as r:
+                r.raise_for_status()
+                total = int(r.headers.get("Content-Length", 0))
+                with open(file, "wb") as f:
+                    for chunk in tqdm(
+                        r.iter_content(chunk_size=8192),
+                        total=total // 8192,
+                        unit="chunk",
+                        desc=f"Downloading {key} geodata",
+                    ):
+                        f.write(chunk)
+
+    return file_paths
+
+def add_nearest_highway(data: pd.DataFrame, us_roadmap: None | str | Path = None) -> pd.DataFrame:
+    """
+    Function to calculate distance of corresponding launch site to nearest highway.
+    Adds the distance to nearest highway column to `data`.
+
+    :param data: pd.DataFrame; launch data
+
+    :param us_roadmap: None, or str, or Path; Default None; file path to US roadmap geodata. If None,
+                       function loads the geodata from the default path:
+                       parent directory > data/external/us_road_map.json
+
+    :return: pd.DataFrame; launch data with `nearest_highway` column
+    """
+    # Load US Roadmap geodata
+    if not us_roadmap:
+        us_roadmap = Path.cwd().parent / "data/external/us_road_map.json"
+
+    with open(us_roadmap, "rb") as f:
+        roads_json = json.load(f)
+
+    roads_topo = tp.Topology(roads_json, object_name="roads")
+    roads_gdf = roads_topo.to_gdf(crs="EPSG:4326")
+    mask = roads_gdf["type"] == "Major Highway"
+    roads_gdf = (
+        roads_gdf[mask].reset_index(drop=True).to_crs(epsg=5070)
+    )  # reprojected to EPSG:5070
+
+    # Define function -- convert reproject (lon,lat) to EPSG:5070 and calculate nearest distance
+    def func(row):
+        lon = row.longitude
+        lat = row.latitude
+        row_conv = gpd.GeoSeries([Point(lon, lat)], crs="EPSG:4326").to_crs(epsg=5070)[0]
+        return roads_gdf.geometry.distance(row_conv).min() / 1000
+
+    # Apply function to data
+    data["nearest_highway"] = data.apply(func, axis=1)
+
+    return data
+
+
+def add_nearest_railway(data: pd.DataFrame, us_railways: None | str | Path = None) -> pd.DataFrame:
+    """
+    Function to calculate distance of corresponding launch site to nearest railway.
+    Adds the distance to nearest railway column to `data`.
+
+    :param data: pd.DataFrame; launch data
+
+    :param us_railways: None, or str, or Path; Default None; file path to US railways geodata. If None,
+                        functions loads the geodata from the default path:
+                        parent directory > data/external/us_railways.geojson
+
+    :return: pd.DataFrame; launch data with `nearest_railway` column
+    """
+    # Load US Roadmap geodata
+    if not us_railways:
+        us_railways = Path.cwd().parent / "data/external/us_railways.geojson"
+
+    railways_gdf = gpd.read_file(us_railways)
+    mask = railways_gdf["NET"] == "M"
+    railways_gdf = railways_gdf[mask][["geometry"]].to_crs(epsg=5070)  # reprojected to EPSG:5070
+
+    # Define function -- convert reproject (lon,lat) to EPSG:5070 and calculate nearest distance
+    def func(row):
+        lon = row.longitude
+        lat = row.latitude
+        row_conv = gpd.GeoSeries([Point(lon, lat)], crs="EPSG:4326").to_crs(epsg=5070)[0]
+        return railways_gdf.geometry.distance(row_conv).min() / 1000
+
+    # Apply function to data
+    data["nearest_railway"] = data.apply(func, axis=1)
+
+    return data
+
+
+def add_nearest_coastline(
+    data: pd.DataFrame,
+    global_coastline: None | str | Path = None,
+    florida_coastline: None | str | Path = None,
+) -> pd.DataFrame:
+    """
+    Function to calculate distance of corresponding launch site to nearest coastline.
+    Adds the distance to nearest coastline column to `data`
+
+    For accuracy purposes, the Florida coastline geodata will be used for launch sites based in Florida;
+    otherwise, the global coastline geodata will be used.
+
+    :param data: pd.DataFrame; launch data
+
+    :param global_coastline: None, or str, or Path; Default None; file path to global coastline geodata. If None,
+                             function loads geodata from the default path:
+                             parent directory > data/external/ne_coastline.zip
+
+    :param florida_coastline: None, or str, or Path; Default None; file path to Florida coastline geodata. If None,
+                              function loads geodata from the default path:
+                              parent directory > data/external/florida_coastline.geojson
+
+    :return: pd.DataFrame; launch data with `nearest_coastline` column
+    """
+
+    # Load global coastline data
+    if not global_coastline:
+        global_coastline = Path.cwd().parent / "data/external/ne_coastline.zip"
+
+    zip_uri = f"zip://{global_coastline.as_posix()}"
+    global_coastline_gdf = gpd.read_file(zip_uri).to_crs(epsg=5070)
+
+    # Load Florida coastline data
+    if not florida_coastline:
+        florida_coastline = Path.cwd().parent / "data/external/florida_coastline.geojson"
+
+    florida_gdf = gpd.read_file(florida_coastline)
+    florida_gdf["geometry"] = florida_gdf.geometry.boundary
+    florida_gdf = florida_gdf.to_crs(epsg=5070)
+
+    # Define function -- convert reproject (lon,lat) to EPSG:5070 and calculate nearest distance
+    def func(row):
+        lon = row.longitude
+        lat = row.latitude
+        row_conv = gpd.GeoSeries([Point(lon, lat)], crs="EPSG:4326").to_crs(epsg=5070)[0]
+
+        if lon >= -87 and lat <= 31:  # Approximate range for places in Florida
+            return florida_gdf.geometry.distance(row_conv).min() / 1000
+
+        else:
+            return global_coastline_gdf.geometry.distance(row_conv).min() / 1000
+
+    # Apply function to data
+    data["nearest_coastline"] = data.apply(func, axis=1)
+
+    return data
+
+def add_nearest(csv_path: str | Path, save_path: None | str | Path = None) -> None|Path:
+    """
+    Utility function to run `add_nearest_highway`, `add_nearest_railway`, and `add_nearest_coastline`
+    functions on the csv file containing the dataset.
+
+    :param csv_path: str or Path; file path where csv file containing launch data is saved
+    :param save_path: None, str, or Path; default None; file path where the processed csv file
+                      is saved. If None, the csv file is saved in the current working directory.
+    :return: `save_path` as Path
+    """
+    try:
+        df = pd.read_csv(csv_path)
+
+    except FileNotFoundError as e:
+        print("Please check if file exists: {}".format(e))
+        return None
+
+    if not save_path:
+        save_path = Path.cwd()
+    else:
+        save_path = Path(save_path)
+
+    add_nearest_highway(df)
+    add_nearest_railway(df)
+    add_nearest_coastline(df)
+
+    df.to_csv(save_path, index=False)
+
+    return save_path
