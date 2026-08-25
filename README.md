@@ -4,6 +4,8 @@
     <img src="https://img.shields.io/badge/CCDS-Project%20template-328F97?logo=cookiecutter" />
 </a>
 
+In this capstone, we will predict if the Falcon 9 first stage will land successfully. SpaceX advertises Falcon 9 rocket launches on its website, with a cost of 62 million dollars; other providers cost upward of 165 million dollars each, much of the savings is because SpaceX can reuse the first stage. Therefore if we can determine if the first stage will land, we can determine the cost of a launch. This information can be used if an alternate company wants to bid against SpaceX for a rocket launch. In this module, you will be provided with an overview of the problem and the tools you need to complete the course.
+
 The company SpaceY aims to build a rocket at significantly lower cost by implementing a booster stage that is capable of landing vertically to facilitate reuse. The task in this project is to provide a report determining the cost of a launch and to create predictive analytics to determine whether the booster stage would land properly for a given launch.
 
 ## Project Organization
