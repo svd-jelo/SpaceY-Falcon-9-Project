@@ -1,24 +1,47 @@
-from itertools import islice
 import json
 from pathlib import Path
 import re
 import time
 from typing import Any
 
-from bs4 import BeautifulSoup
 import geopandas as gpd
 import pandas as pd
 import requests
 from shapely.geometry import Point
+from sklearn.model_selection import train_test_split
 import topojson as tp
 from tqdm import tqdm
 
+from spacey_falcon_9_project.config import (
+    dataset_interim,
+    dataset_processed,
+    external_dir,
+    file_name_gcat,
+    file_name_ll2,
+    gcat_url,
+    geodata_paths,
+    geodata_urls,
+    interim_dir,
+    ll2_url,
+    processed_dir,
+    random_state,
+    raw_dir,
+    test_set,
+    training_set,
+)
+
 #=====================================================================================================================
-# DATA COLLECTION PART 1 - FROM API
+# DATA COLLECTION
 #=====================================================================================================================
 
-def get_ll2_launches(offset):
-    ll2_api = "https://ll.thespacedevs.com/2.3.0/launches/previous/"
+def get_ll2_launches(offset: int) -> None|dict:
+    """
+    Function for making get requests to LL2 API
+
+    :param offset: int; offset to be used for the API request
+    :return: dict; contents of the response from the API request
+    """
+    ll2_api = ll2_url
     query_params = dict(
         mode="detailed", limit=100, rocket__configuration__name="Falcon 9", offset=offset
     )
@@ -41,20 +64,19 @@ def get_ll2_launches(offset):
     return None
 
 def download_all_ll2_launches() -> None|list[Path]:
+    """
+    :return: list[Path]; file paths to the LL2 launches
+    """
     file_paths = []
-    for offset in range(0, 700, 100):
-        parent_dir = Path.cwd().parent
-        file_dir = parent_dir / "data" / "raw"
-        file_dir.mkdir(parents=True, exist_ok=True)
+    for offset in tqdm(range(0, 700, 100), desc="Downloading all LL2 launches"):
+        raw_dir.mkdir(parents=True, exist_ok=True)
         file_name = "ll2-api-2.3.0-launches-previous-{}.json".format(offset)
-        file_path = file_dir / file_name
+        file_path = raw_dir / file_name
         if file_path.is_file():
-            print("{} already exists.".format(file_name))
+            file_paths.append(file_path)
             continue
         try:
             data = get_ll2_launches(offset)
-            if not isinstance(data, bytes):
-                raise TypeError("Expected bytes, got {}".format(type(data)))
             with open(file_path, "w") as f:
                 json.dump(data, f)
         except Exception as e:
@@ -63,14 +85,18 @@ def download_all_ll2_launches() -> None|list[Path]:
         file_paths.append(file_path)
     return file_paths
 
-def download_launch_data_static(url: str, file_name: str, query_params=None, headers=None) -> None|Path:
-    parent_dir = Path.cwd().parent
-    file_dir = parent_dir / "data" / "raw"
-    file_dir.mkdir(parents=True, exist_ok=True)
-    file_path = file_dir / file_name
+def download_launch_data_static(url: str, file_name: str, query_params: dict|None = None, headers: dict|None = None) -> None|Path:
+    """
+    :param url: str; URL to download the data from
+    :param file_name: str; File name to save the data to
+    :param query_params: dict or None; Default None; Parameters to be used in requesting data
+    :param headers: dict or None; Default None; Headers to be used in requesting data
+    :return: Path; file path to the downloaded file
+    """
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    file_path = raw_dir / file_name
 
     if file_path.is_file():
-        print("{} already exists".format(file_name))
         return file_path
 
     response = requests.get(url, params=query_params, headers=headers)
@@ -91,14 +117,17 @@ def download_launch_data_static(url: str, file_name: str, query_params=None, hea
         return None
 
 # Partial Data Transformation - Merging LL2 launch, GCAT launch, and Course-provided launch data
-def merge_ll2_launch_data(json_paths: list[Path], merged_path: None|Path = None) -> Path:
+def merge_ll2_launch_data(json_paths: None|list[Path], merged_path: None|Path = None) -> None|Path:
     """
     Function to merge LL2 launches that were extracted and downloaded with the download_all_ll2_launches() function
     :param json_paths: list[Path]; file paths to the paginated files. Particularly, the returned output of the
                        download_all_ll2_launches() function
     :param merged_path: None or Path; path to the merged files. If not specified, the merged file will be saved in
-                        the current working directory.
+                        the parent directory > data/interim folder.
     """
+
+    if not json_paths:
+        return None
 
     merged = []
     for path in json_paths:
@@ -107,7 +136,8 @@ def merge_ll2_launch_data(json_paths: list[Path], merged_path: None|Path = None)
         merged.extend(launch_page['results'])
 
     if merged_path is None:
-        merged_path = Path.cwd() / 'll2-api-2.3.0-launches-previous-merged.json'
+        interim_dir.mkdir(parents=True, exist_ok=True)
+        merged_path = interim_dir / file_name_ll2
 
     with open(merged_path, 'w') as f:
         json.dump(merged, f)
@@ -129,13 +159,19 @@ def get_path(d: dict, path: str) -> Any:
         d = d.get(key) if isinstance(d, dict) else None
     return d
 
-def transform_ll2_launches(json_path: str | Path) -> pd.DataFrame:
+def transform_ll2_launches(json_path: None | str | Path = None) -> pd.DataFrame:
     """
     A function to transform LL2 raw data given as a JSON file path
 
-    :param json_path: str or Path; local path to the JSON file containing raw ll2 launches data
+    :param json_path: str or Path; local path to the JSON file containing raw ll2 launches data; if None, dataset is
+    assumed saved in the interim folder with the file name 'll2-api-2.3.0-launches-previous-merged.json'
+
     :return: pd.DataFrame; transformed LL2 launch data containing relevant columns for analysis, but requires further wrangling
     """
+
+    if not json_path:
+        json_path = interim_dir / file_name_ll2
+
     with open(json_path, "r") as f:
         data_json = json.load(f)
 
@@ -144,6 +180,7 @@ def transform_ll2_launches(json_path: str | Path) -> pd.DataFrame:
         net="net",
         booster_version="rocket.configuration.name",
         orbit="mission.orbit.name",
+        mission_type="mission.type",
         launch_site="pad.name",
         landing_success="rocket.launcher_stage.landing.success",
         landing_type="rocket.launcher_stage.landing.type.abbrev",
@@ -174,79 +211,58 @@ def transform_ll2_launches(json_path: str | Path) -> pd.DataFrame:
     data_df["launch_date"] = pd.to_datetime(data_df["net"]).dt.date
     data_df = data_df.drop("net", axis=1)
 
-    # Derived column - outcome
-    def to_str(entry: Any) -> str:
-        """
-        Utility function to convert any object to str.
-        If the object is None, function returns the string 'None'
-
-        :param entry: object to be converted to string.
-        """
-        if entry is None:
-            return 'None'
-        else:
-            return str(entry)
-
-    data_df["outcome"] = data_df["landing_success"].map(to_str) + " " + data_df["landing_type"].map(to_str)
-    data_df = data_df.drop(["landing_success", "landing_type"], axis=1)
-
-    # Drop missing values in launch designator and outcome
+    # Drop missing values in launch designator
     data_df = data_df.dropna(subset="launch_designator")
 
-    return data_df
+    # Convert landing success column to str
+    data_df['landing_success'] = data_df['landing_success'].map(str)
 
-def transform_gcat_data(gcat_path: str | Path) -> pd.DataFrame:
+    # Orbit categories with less than 10 instances are collapsed and grouped under "Others"
+    orbits = data_df['orbit'].value_counts()
+    mask = orbits < 10
+    others = orbits[mask].index
+    data_df['orbit'] = data_df['orbit'].map(lambda x: 'Others' if x in others else x)
+
+    return data_df.reset_index(drop=True)
+
+def transform_gcat_data(gcat_path: None | str | Path = None) -> pd.DataFrame:
     """
     Function to transform GCAT raw data from the specified file path
-    :param gcat_path: str or Path; file path to the GCAT raw data.
+    :param gcat_path: str or Path; file path to the GCAT raw data. If None, dataset is assumed to be saved in raw data
+    folder with the file name 'mcdowell-gcat-launch-data.tsv'
+
     :return: pd.DataFrame; dataframe containing relevant data from GCAT
     """
+
+    if not gcat_path:
+        gcat_path = raw_dir / file_name_gcat
 
     gcat_df = pd.read_csv(gcat_path, sep="\t", skiprows=(lambda x: x in [1]))
 
     pattern = r"^\d{4}\s+\w{3}\s+\d{1,2}"
     format_date = re.compile(pattern)
-    launch_date = gcat_df["Launch_Date"].map(lambda x: format_date.match(x).group())
+
+    def format_gcat_date(x):
+        match = format_date.match(x)
+        if not match:
+            return None
+        else:
+            return match.group()
+
+    launch_date = gcat_df["Launch_Date"].map(format_gcat_date)
     gcat_df["launch_date"] = pd.to_datetime(launch_date).dt.date
 
     gcat_df = gcat_df[["#Launch_Tag", "launch_date", "OrbPay"]]
     gcat_df = gcat_df.rename(
-        columns={"#Launch_Tag": "launch_designator"}
+        columns={"#Launch_Tag": "launch_designator", "OrbPay": "payload_mass"}
     )  # rename '#Launch_Tag' to launch designator
     gcat_df["launch_designator"] = gcat_df[
         "launch_designator"
     ].str.strip()  # remove trailing white spaces from launch_designator column
 
-    return gcat_df
+    return gcat_df.reset_index(drop=True)
 
-def transform_course_data(course_path: str | Path) -> pd.DataFrame:
-    """
-    Function to transform course-provided static JSON raw data from the specified path
-
-    :param course_path: str or Path; file path to the JSON raw data
-    :return: pd.DataFrame; containing relevant data from the course-provided data
-    """
-
-    with open(course_path, "r") as f:
-        json_data = json.load(f)
-
-    json_keys = {"date_utc": "date_utc", "gridfins": "cores.gridfins", "legs": "cores.legs"}
-
-    course_dict = {}
-    for col, key in json_keys.items():
-        cols = []
-        for launch in json_data:
-            cols.append(get_path(launch, key))
-        course_dict.update({col: cols})
-
-    course_df = pd.DataFrame(course_dict)
-
-    course_df["launch_date"] = pd.to_datetime(course_df["date_utc"]).dt.date
-    course_df = course_df.drop("date_utc", axis=1)
-
-    return course_df
-
-def merge_launch_data(ll2_df: pd.DataFrame, gcat_df: pd.DataFrame, course_df: pd.DataFrame, csv_path: None|str|Path = None) -> None|Path:
+def merge_launch_data(ll2_df: pd.DataFrame, gcat_df: pd.DataFrame) -> pd.DataFrame:
     """
     Function to merge transformed ll2 launches data, transformed GCAT launch data, and transformed course data.
     ll2 launches and gcat data will be merged on `launch_designator`, and resulting merged DataFrame will be merged
@@ -255,17 +271,8 @@ def merge_launch_data(ll2_df: pd.DataFrame, gcat_df: pd.DataFrame, course_df: pd
 
     :param ll2_df: pd.DataFrame; transformed ll2 data
     :param gcat_df: pd.DataFrame; transformed gcat data
-    :param course_df: pd.DataFrame; transformed course data
-    :param csv_path: None or str or Path; Default None. File path where merged DataFrame is to be saved. If None,
-                     merged DataFrame will be saved in the current working directory
-    :return: Path; csv_path
+    :return: pd.DataFrame; merged DataFrame
     """
-
-    if not csv_path:
-        csv_path = Path.cwd() / 'launch_data_1.csv'
-
-    if isinstance(csv_path, str):
-        csv_path = Path(csv_path)
 
     # Merge LL2 and GCAT
     merged_df = ll2_df.merge(gcat_df, on='launch_designator', how='inner', validate='1:1')
@@ -282,40 +289,18 @@ def merge_launch_data(ll2_df: pd.DataFrame, gcat_df: pd.DataFrame, course_df: pd
     duplicate_dates = merged_df[merged_df['launch_date'].map(lambda x: x in counts[counts>1].index)]
     merged_df = merged_df.drop(index=duplicate_dates.index)
 
-    # Merge Course DF
-    merged_df = merged_df.merge(course_df, on='launch_date', how='inner', validate='1:1')
+    return merged_df.reset_index(drop=True)
 
-    # Convert DF to CSV
-    merged_df.to_csv(csv_path, index=False)
-
-    return csv_path
-
-def add_class(launch_csv: str | Path, save_path: None | str | Path = None) -> None | Path:
+def add_class(launch_df: pd.DataFrame, save_path: None | str | Path = None) -> None | Path:
     """
     Function that adds the target 'Class' column to the launch data from the specified launch csv path,
     and saves the result to the specified save path.
 
-    :param launch_csv: str or Path; file path to the launches csv file
+    :param launch_df: pd.DataFrame; DataFrame containing launch data
     :param save_path: str or Path; Default None; file path where the result is to be saved. If None,
-                      result will be saved in the current working directory.
+                      result will be saved in parent directory > data/interim folder.
     :return save_path: Path; file path where result is saved.
     """
-    try:
-        launch_df = pd.read_csv(launch_csv)
-
-    except Exception as e:
-        print(e)
-        return None
-
-    # Drop NaN or NA values
-    launch_df.dropna(axis=0, inplace=True)
-
-    landing_outcomes = launch_df["outcome"].unique()
-
-    bad_outcomes = set()
-    for outcome in landing_outcomes:
-        if "False" in outcome or "None" in outcome:
-            bad_outcomes.add(outcome)
 
     def outcome_map(entry: str) -> int:
         """
@@ -327,229 +312,42 @@ def add_class(launch_csv: str | Path, save_path: None | str | Path = None) -> No
         :return outcome: int; if the entry is a landing success, `outcome=1`; otherwise, `outcome=0`.
         """
 
-        if entry in bad_outcomes:
-            landing_outcome = 0
-        else:
+        if entry=='True':
             landing_outcome = 1
+        else:
+            landing_outcome = 0
 
         return landing_outcome
 
-    launch_df["class"] = launch_df["outcome"].map(outcome_map)
+    launch_df["class"] = launch_df["landing_success"].map(outcome_map)
+
+    # Drop NaN or NA values
+    from_cols = list(launch_df.columns)
+    from_cols.remove("landing_success")
+    launch_df.dropna(axis=0, inplace=True, subset=from_cols)
 
     if not save_path:
-        save_path = Path.cwd() / "api-launch-data-table-class.csv"
-
-    if isinstance(save_path, str):
+        interim_dir.mkdir(parents=True, exist_ok=True)
+        save_path = interim_dir / dataset_interim
+    else:
         save_path = Path(save_path)
 
     launch_df.to_csv(save_path, index=False)
 
     return save_path
 
-# Download LL2 API Launches Data
-#download_all_ll2_launches()
-
-# Download static JSON provided by the course for project use
-#url_ibm='https://cf-courses-data.s3.us.cloud-object-storage.appdomain.cloud/IBM-DS0321EN-SkillsNetwork/datasets/API_call_spacex_api.json'
-#file_name_ibm = 'ibm-ds-capstone-launch-data.json'
-#download_launch_data_static(url_ibm, file_name_ibm)
-
-# Download launch data from GCAT
-#url_gcat='https://planet4589.org/space/gcat/tsv/launch/Falcon9.tsv'
-#file_name_gcat = 'mcdowell-gcat-launch-data.tsv'
-#download_launch_data_static(url_gcat, file_name_gcat)
-
-#=====================================================================================================================
-# DATA COLLECTION PART 2 - BY WEB SCRAPING
-#=====================================================================================================================
-
-# Download launch data from Wikipedia
-#url_wiki = "https://en.wikipedia.org/w/index.php?title=List_of_Falcon_9_and_Falcon_Heavy_launches&oldid=1027686922"
-#file_name_wiki = "wikipedia-launch-data-table.html"
-#headers_wiki = {
-#    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-#                  "AppleWebKit/537.36 (KHTML, like Gecko) "
-#                  "Chrome/91.0.4472.124 Safari/537.36"
-#}
-#download_launch_data_static(url_wiki, file_name_wiki, headers=headers_wiki)
-
-# Parse HTML document and convert to csv
-def parse_table(table) -> pd.DataFrame:
-    """
-    returns a pandas DataFrame containing the parsed table
-    table: bs4 table element
-    """
-    # Create Header Row
-    header_row = table.find("tr")
-
-    # Create List of Keys
-    keys = []
-    for child in header_row.children:
-        if child.name:  # Filter out `\n` using the fact that the element `\n` has no name (None)
-            keys.append(child.get_text())
-    keys.append("Description")
-
-    # Create Launch Dictionary
-    values = []
-    for i in range(len(keys)):
-        values.append([])
-    launch_dict = dict(zip(keys, values))
-
-    # RegEx objects to filter launch data - to filter out sup, spans, white spaces, and falcon heavy launches
-    pattern_sup_span = (
-        r"\[\d+\]|\[[a-z]\]|\s+$"  # Pattern that matches sup and spans and trailing white spaces
-    )
-    pattern_fh = (
-        r"FH\s+\d+"  # Pattern that matches Flight No.'s corresponding to Falcon Heavy launches
-    )
-    remove_sup_span = re.compile(pattern_sup_span)
-    is_fh = re.compile(pattern_fh)
-
-    # Parse table and populate launch dictionary
-    iterator = iter([row for row in header_row.next_siblings if row.name])
-    for row in iterator:
-        if row.name:
-            cols = [col for col in row.children if col.name]
-            try:
-                # Skip Falcon Heavy Launches
-                if is_fh.fullmatch(cols[0].get_text()):
-                    rowspan = int(cols[0]["rowspan"])
-                    next_flight = next(islice(iterator, rowspan - 1, rowspan), None)
-                    if not next_flight:
-                        break
-                    cols = [col for col in next_flight.children if col.name]
-
-                # Populate launch dictionary
-                if cols[0].name == "th":
-                    rowspan = int(cols[0]["rowspan"])
-                    keys = launch_dict.keys()
-                    for idx, key in enumerate(keys):
-                        # Obtain launch data for current iteration
-                        if idx != len(keys) - 1:
-                            launch_dict[key].append(remove_sup_span.sub("", cols[idx].get_text()))
-
-                        # Obtain the description from the last iteration (if rowspan=3, then description row is 2 step from the current iteration)
-                        else:
-                            next_row = next(
-                                islice(iterator, rowspan - 2, rowspan - 1),
-                                BeautifulSoup("<p></p>", "lxml"),
-                            )
-                            description = [col for col in next_row.children if col.name]
-                            launch_dict[key].append(
-                                remove_sup_span.sub("", description[0].get_text())
-                            )
-
-            except IndexError as e:
-                print("{}\nrow with column length {} was ignored".format(e, len(cols)))
-
-    return pd.DataFrame(launch_dict)
-
-
-def parse_all_tables(past_launches_tables) -> pd.DataFrame:
-    """
-    returns a Pandas DataFrame containing all tables parsed from the past_launches_tables
-    past_launches_table: list of bs4 element tags; contents of the section of the markup containing table of past launches by period (2010-2013, 2014, etc.)
-    """
-    launches_df_web_scrap = parse_table(past_launches_tables[0])
-    for table in past_launches_tables[1:]:
-        table_df = parse_table(table)
-        table_df.columns = launches_df_web_scrap.columns.values
-        launches_df_web_scrap = pd.concat([launches_df_web_scrap, table_df])
-
-    return launches_df_web_scrap.reset_index(drop=True)
-
-def launches_html_to_csv(html_path: str|Path, csv_path:None|str = None) -> None|Path:
-    """
-    :param csv_path: file path where converted HTML document is to be saved
-    :param html_path: file path to the HTML document.
-    :return: None; the function saves the csv file to the specified path.
-    """
-    # Load HTML Document
-    try:
-        with open(html_path, "r") as f:
-            html_doc = BeautifulSoup(f.read(), "lxml")
-    except OSError as e:
-        print('{} Conversion of HTML document to CSV file has been stopped.'.format(e))
-        return None
-
-    # Check/Create CSV Path
-    if not csv_path:
-        parent_dir = Path.cwd().parent                  # Parent directory
-        file_dir = parent_dir / "data" / "interim"      # File directory; where the csv file is saved
-        file_dir.mkdir(parents=True, exist_ok=True)     # Create file directory if it does not exist
-        file_name = 'wikipedia-launch-data-table.csv'   # File name
-        csv_path = file_dir / file_name                 # File path
-
-        if csv_path.is_file():
-            print("{} already exists".format(file_name))
-            return csv_path
-
-    if isinstance(csv_path, str):
-        csv_path = Path(csv_path)
-
-    # Parse HTML document and store data in a pandas DataFrame
-    html_launch_section = html_doc.find("section", attrs={"aria-labelledby": "Past_launches"})
-    html_launch_tables = html_launch_section.find_all("table")
-    launches_df = parse_all_tables(html_launch_tables)
-
-    # Save pandas DataFrame to CSV file
-    launches_df.to_csv(csv_path, index=False)
-
-    return csv_path
-
 #=====================================================================================================================
 # GEODATA -- Addition of columns for distance to nearest highway, railway, and coastline
 #=====================================================================================================================
-def download_layers_data(folder_path: None | str | Path = None) -> dict[str, Path]:
+def download_layers_data() -> dict[str, Path]:
     """
-    Function for downloading geodata for highways, railways, and coastlines
-
-    :param folder_path: None, str, or Path; default None; folder path where geodata are cached
-                        if None, the files are saved in the default path:
-                        parent directory > data/external
+    Function for downloading geodata for highways, railways, and coastlines. File path where data is downloaded
+    is set as parent directory > data/external folder.
 
     :return: dict[str, Path]; Dictionary of file paths.
     """
-    if not folder_path:
-        folder_path = Path.cwd().parent / "data/external"
-    else:
-        folder_path = Path(folder_path)
-
-    folder_path.mkdir(parents=True, exist_ok=True)
-
-    # File Paths
-    file_paths = {
-        "US roadmap": folder_path / "us_road_map.json",
-        "US railways": folder_path / "us_railways.geojson",
-        "Global coastline": folder_path / "ne_coastline.zip",
-        "Florida coastline": folder_path / "florida_coastline.geojson",
-    }
-
-    # URLs
-    urls = [
-        # US Roads
-        "https://gist.githubusercontent.com/bricedev/96d2113bd29f60780223/raw/957d51ac88a6de442cf73b9efa8615fce9f9577e/usroads.json",
-        # US Railways
-        "/".join(
-            [
-                "https://services.arcgis.com",
-                "xOi1kZaI0eWDREZv",
-                "arcgis",
-                "rest",
-                "services",
-                "NTAD_North_American_Rail_Network_Lines",
-                "FeatureServer",
-                "replicafilescache",
-                "NTAD_North_American_Rail_Network_Lines_-5214657740406327753.geojson",
-            ]
-        ),
-        # Global Coastline Data - from Natural Earth
-        "https://naciscdn.org/naturalearth/10m/physical/ne_10m_coastline.zip",
-        # Florida Coastline Data - from ArcGIS
-        "https://hub.arcgis.com/api/v3/datasets/eda0c60e98cd43af9422dc5ea54d8d56_2/downloads/data?format=geojson&spatialRefId=4326&where=1%3D1",
-    ]
-
-    for key, file, url in zip(file_paths.keys(), file_paths.values(), urls):
+    external_dir.mkdir(parents=True, exist_ok=True)
+    for key, file, url in zip(geodata_paths.keys(), geodata_paths.values(), geodata_urls):
         if not file.is_file():
             with requests.get(url, stream=True) as r:
                 r.raise_for_status()
@@ -563,7 +361,7 @@ def download_layers_data(folder_path: None | str | Path = None) -> dict[str, Pat
                     ):
                         f.write(chunk)
 
-    return file_paths
+    return geodata_paths
 
 def add_nearest_highway(data: pd.DataFrame, us_roadmap: None | str | Path = None) -> pd.DataFrame:
     """
@@ -580,7 +378,7 @@ def add_nearest_highway(data: pd.DataFrame, us_roadmap: None | str | Path = None
     """
     # Load US Roadmap geodata
     if not us_roadmap:
-        us_roadmap = Path.cwd().parent / "data/external/us_road_map.json"
+        us_roadmap = geodata_paths["US roadmap"]
 
     with open(us_roadmap, "rb") as f:
         roads_json = json.load(f)
@@ -620,7 +418,7 @@ def add_nearest_railway(data: pd.DataFrame, us_railways: None | str | Path = Non
     """
     # Load US Roadmap geodata
     if not us_railways:
-        us_railways = Path.cwd().parent / "data/external/us_railways.geojson"
+        us_railways = geodata_paths["US railways"]
 
     railways_gdf = gpd.read_file(us_railways)
     mask = railways_gdf["NET"] == "M"
@@ -666,14 +464,16 @@ def add_nearest_coastline(
 
     # Load global coastline data
     if not global_coastline:
-        global_coastline = Path.cwd().parent / "data/external/ne_coastline.zip"
+        global_coastline = geodata_paths["Global coastline"]
+    else:
+        global_coastline = Path(global_coastline)
 
     zip_uri = f"zip://{global_coastline.as_posix()}"
     global_coastline_gdf = gpd.read_file(zip_uri).to_crs(epsg=5070)
 
     # Load Florida coastline data
     if not florida_coastline:
-        florida_coastline = Path.cwd().parent / "data/external/florida_coastline.geojson"
+        florida_coastline = geodata_paths["Florida coastline"]
 
     florida_gdf = gpd.read_file(florida_coastline)
     florida_gdf["geometry"] = florida_gdf.geometry.boundary
@@ -696,25 +496,29 @@ def add_nearest_coastline(
 
     return data
 
-def add_nearest(csv_path: str | Path, save_path: None | str | Path = None) -> None|Path:
+def add_nearest(csv_path: None | str | Path, save_path: None | str | Path = None) -> None|Path:
     """
     Utility function to run `add_nearest_highway`, `add_nearest_railway`, and `add_nearest_coastline`
     functions on the csv file containing the dataset.
 
     :param csv_path: str or Path; file path where csv file containing launch data is saved
     :param save_path: None, str, or Path; default None; file path where the processed csv file
-                      is saved. If None, the csv file is saved in the current working directory.
+                      is saved. If None, the csv file is saved in the parent directory > data/processed
+                      folder
     :return: `save_path` as Path
     """
+    if not csv_path:
+        return None
+
     try:
-        df = pd.read_csv(csv_path)
+        df = pd.read_csv(csv_path, na_filter=False)
 
     except FileNotFoundError as e:
-        print("Please check if file exists: {}".format(e))
+        print("Please check if file exists: m{}".format(e))
         return None
 
     if not save_path:
-        save_path = Path.cwd()
+        save_path = processed_dir / dataset_processed
     else:
         save_path = Path(save_path)
 
@@ -725,3 +529,44 @@ def add_nearest(csv_path: str | Path, save_path: None | str | Path = None) -> No
     df.to_csv(save_path, index=False)
 
     return save_path
+
+#=====================================================================================================================
+# CREATE TEST SET
+#=====================================================================================================================
+
+def create_test_set() -> None | list[Path]:
+    """
+    Function to create a test set stratified based on class.
+    :return: [train_set_path, test_set_path]; list of Paths to the training and test sets.
+    """
+    train_set_path = processed_dir / training_set
+    test_set_path = processed_dir / test_set
+    csv_path = processed_dir / dataset_processed
+
+    try:
+        df = pd.read_csv(csv_path, na_filter=False)
+        train_df, test_df = train_test_split(df, test_size=0.2, random_state=random_state, stratify=df['class'])
+        train_df.to_csv(train_set_path, index=False)
+        test_df.to_csv(test_set_path, index=False)
+    except FileNotFoundError as e:
+        print("Please check if file exists: m{}".format(e))
+        return None
+
+#=====================================================================================================================
+# MAIN
+#=====================================================================================================================
+
+def main():
+    ll2_raw = download_all_ll2_launches()
+    download_launch_data_static(gcat_url, file_name_gcat)
+    merge_ll2_launch_data(ll2_raw)
+    ll2_df = transform_ll2_launches()
+    gcat_df = transform_gcat_data()
+    merged_df = merge_launch_data(ll2_df, gcat_df)
+    csv_interim = add_class(merged_df)
+    download_layers_data()
+    add_nearest(csv_interim)
+    create_test_set()
+
+if __name__ == "__main__":
+    main()
