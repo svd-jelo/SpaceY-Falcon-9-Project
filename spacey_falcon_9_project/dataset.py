@@ -217,11 +217,8 @@ def transform_ll2_launches(json_path: None | str | Path = None) -> pd.DataFrame:
     # Convert landing success column to str
     data_df['landing_success'] = data_df['landing_success'].map(str)
 
-    # Orbit categories with less than 10 instances are collapsed and grouped under "Others"
-    orbits = data_df['orbit'].value_counts()
-    mask = orbits < 10
-    others = orbits[mask].index
-    data_df['orbit'] = data_df['orbit'].map(lambda x: 'Others' if x in others else x)
+    # Regroup: "Block 4", "v1.0", "v1.1" -> "Legacy"
+    data_df['block'] = data_df['block'].map(lambda x: "Legacy" if x in ['Block 4', 'Full Thrust', 'v1.0', 'v1.1'] else x)
 
     return data_df.reset_index(drop=True)
 
