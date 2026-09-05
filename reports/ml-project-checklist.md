@@ -126,22 +126,35 @@ Given the small dataset, a stratified split based on `class` was required.
 # Explore the data  
 Note: try to get insights from a field expert for these steps.  
 
-1. Create a copy of the data for exploration (sampling it down to a manageable size if necessary).
-2. Create a Jupyter notebook to keep record of your data exploration.  
-3. Study each attribute and its characteristics:  
+1. [X] Create a copy of the data for exploration (sampling it down to a manageable size if necessary).
+2. [X] Create a Jupyter notebook to keep record of your data exploration.  
+3. [X] Study each attribute and its characteristics:  
     - Name  
     - Type (categorical, int/float, bounded/unbounded, text, structured, etc.)
     - % of missing values  
     - Noisiness and type of noise (stochastic, outliers, rounding errors, etc.)
     - Possibly useful for the task?  
     - Type of distribution (Gaussian, uniform, logarithmic, etc.)
-4. For supervised learning tasks, identify the target attribute(s).
-5. Visualize the data.  
-6. Study the correlations between attributes.  
-7. Study how you would solve the problem manually.  
-8. Identify the promising transformations you may want to apply.  
-9. Identify extra data that would be useful (go back to "Get the Data" on page 502).  
-10. Document what you have learned.  
+4. [X] For supervised learning tasks, identify the target attribute(s).
+
+Target attributes are: 'payload_mass', 'reused_count', 'orbit', 'mission_type', 'block', 'nearest_highway', 'nearest_railway', 'nearest_coastline'
+
+5. [X] Visualize the data.
+6. [X] Study the correlations between attributes.   
+7. [X] Identify the promising transformations you may want to apply. 
+8. [X] Document what you have learned.  
+
+**Findings**:
+ - **Selected features:** `payload_mass`, `reused_count`, `orbit`, `mission_type`, `block`, `nearest_highway`, `nearest_coastline`, `nearest_railway`
+ - **Transformations to be applied:**
+   - `payload_mass` - due to its bimodal distribution, create two features for the two modes representing the similarity of the data with the two modes.
+   - `reused_count` - apply a `log1p` transform
+   - `orbit` - Categories with less than 10 instances will be grouped to others
+   - `block` - Inactive versions will be grouped to `Legacy`
+   - `mission_type` - mission types with less than 10 instances will be grouped to `Others`. Also, consider domain grouping:
+     - Commercial - Communications, Dedicated Rideshare, Tourism
+     - Science & Defense - Government/Top Secret, Earth Science, Astrophysics, Heliophysics, Lunar Exploration, Robotic Exploration, Navigation, Technology.
+     - ISS / Spaceflight - Resupply, Human Exploration, Test Flight.
 
 # Prepare the data  
 Notes:    
@@ -153,17 +166,12 @@ Notes:
     - To clean and prepare new data instances  
     - To make it easy to treat your preparation choices as hyperparameters  
 
-1. Data cleaning:  
-    - Fix or remove outliers (optional).  
-    - Fill in missing values (e.g., with zero, mean, median...) or drop their rows (or columns).  
-2. Feature selection (optional):  
-    - Drop the attributes that provide no useful information for the task.  
-3. Feature engineering, where appropriate:  
+1. [X] Feature engineering, where appropriate:  
     - Discretize continuous features.  
     - Decompose features (e.g., categorical, date/time, etc.).  
     - Add promising transformations of features (e.g., log(x), sqrt(x), x^2, etc.).
     - Aggregate features into promising new features.  
-4. Feature scaling: standardize or normalize features.  
+2. [X] Feature scaling: standardize or normalize features.  
 
 # Short-list promising models  
 Notes: 
