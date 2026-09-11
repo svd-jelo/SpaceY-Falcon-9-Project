@@ -179,43 +179,31 @@ Notes:
 reasonable time (be aware that this penalizes complex models such as large neural nets or Random Forests).  
 - Once again, try to automate these steps as much as possible.    
 
-1. Train many quick and dirty models from different categories (e.g., linear, naive, Bayes, SVM, Random Forests, 
+1. [X] Train many quick and dirty models from different categories (e.g., linear, naive, Bayes, SVM, Random Forests, 
 neural net, etc.) using standard parameters.  
-2. Measure and compare their performance.  
+2. [x] Measure and compare their performance.  
     - For each model, use N-fold cross-validation and compute the mean and standard deviation of their performance. 
-3. Analyze the most significant variables for each algorithm.  
-4. Analyze the types of errors the models make.  
+3. [x] Analyze the most significant variables for each algorithm.  
+4. [x] Analyze the types of errors the models make.  
     - What data would a human have used to avoid these errors?  
-5. Have a quick round of feature selection and engineering.  
-6. Have one or two more quick iterations of the five previous steps.  
-7. Short-list the top three to five most promising models, preferring models that make different types of errors.  
+5. [x] Have a quick round of feature selection and engineering.  
+6. [X] Have one or two more quick iterations of the five previous steps.  
+7. [x] Short-list the top three to five most promising models, preferring models that make different types of errors.  
 
 # Fine-Tune the System  
 Notes:  
 - You will want to use as much data as possible for this step, especially as you move toward the end of fine-tuning.   
 - As always automate what you can.    
 
-1. Fine-tune the hyperparameters using cross-validation.  
+1. [x] Fine-tune the hyperparameters using cross-validation.  
     - Treat your data transformation choices as hyperparameters, especially when you are not sure about them (e.g., 
    should I replace missing values with zero or the median value? Or just drop the rows?).  
     - Unless there are very few hyperparameter values to explore, prefer random search over grid search. If training 
    is very long, you may prefer a Bayesian optimization approach (e.g., using a Gaussian process priors, as described 
-   by Jasper Snoek, Hugo Larochelle, and Ryan Adams ([https://goo.gl/PEFfGr](https://goo.gl/PEFfGr)))  
-2. Try Ensemble methods. Combining your best models will often perform better than running them individually.  
-3. Once you are confident about your final model, measure its performance on the test set to estimate the generalization error.
+   by Jasper Snoek, Hugo Larochelle, and Ryan Adams ([https://goo.gl/PEFfGr](https://goo.gl/PEFfGr)))   
+3. [x] Once you are confident about your final model, measure its performance on the test set to estimate the generalization error.
 
-> Don't tweak your model after measuring the generalization error: you would just start overfitting the test set.  
-  
-# Present your solution  
-1. Document what you have done.  
-2. Create a nice presentation.  
-    - Make sure you highlight the big picture first.  
-3. Explain why your solution achieves the business objective.  
-4. Don't forget to present interesting points you noticed along the way.  
-    - Describe what worked and what did not.  
-    - List your assumptions and your system's limitations.  
-5. Ensure your key findings are communicated through beautiful visualizations or easy-to-remember statements (e.g., 
-"the median income is the number-one predictor of housing prices").  
+> Don't tweak your model after measuring the generalization error: you would just start overfitting the test set.
 
 # Launch!  
 1. Get your solution ready for production (plug into production data inputs, write unit tests, etc.).  
