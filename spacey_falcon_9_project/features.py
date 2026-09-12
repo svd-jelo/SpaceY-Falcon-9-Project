@@ -9,7 +9,13 @@ from sklearn.mixture import GaussianMixture
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import FunctionTransformer, OneHotEncoder, StandardScaler
 
-from spacey_falcon_9_project.config import processed_dir, random_state, test_set, training_set
+from spacey_falcon_9_project.config import (
+    dataset_processed,
+    processed_dir,
+    random_state,
+    test_set,
+    training_set,
+)
 
 
 def load_training_set():
@@ -22,6 +28,12 @@ def load_training_set():
 def load_test_set():
     test_set_path = Path(processed_dir / test_set)
     df = pd.read_csv(test_set_path)
+    X = df.drop(["class"], axis=1)
+    y = df["class"]
+    return X, y
+
+def load_whole_dataset():
+    df = pd.read_csv(processed_dir / dataset_processed)
     X = df.drop(["class"], axis=1)
     y = df["class"]
     return X, y
