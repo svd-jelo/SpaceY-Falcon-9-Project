@@ -515,6 +515,7 @@ def add_nearest(csv_path: None | str | Path, save_path: None | str | Path = None
         print("Please check if file exists: m{}".format(e))
         return None
 
+    processed_dir.mkdir(parents=True, exist_ok=True)
     if not save_path:
         save_path = processed_dir / dataset_processed
     else:
