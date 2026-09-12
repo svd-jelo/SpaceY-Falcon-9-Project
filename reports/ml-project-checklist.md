@@ -206,7 +206,7 @@ Notes:
 > Don't tweak your model after measuring the generalization error: you would just start overfitting the test set.
 
 # Launch!  
-1. Get your solution ready for production (plug into production data inputs, write unit tests, etc.).  
+1. [X] Get your solution ready for production (plug into production data inputs, write unit tests, etc.).  
 2. Write monitoring code to check your system's live performance at regular intervals and trigger alerts when it drops.  
     - Beware of slow degradation too: models tend to "rot" as data evolves.   
     - Measuring performance may require a human pipeline (e.g., via a crowdsourcing service).  

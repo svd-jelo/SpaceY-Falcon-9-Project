@@ -20,12 +20,12 @@ requirements:
 ## Create Dataset
 .PHONY: dataset
 dataset:
-    $(PYTHON_INTERPRETER) spacey_falcon_9_project/dataset.py
+	$(PYTHON_INTERPRETER) spacey_falcon_9_project/dataset.py
 
 ## Train model over dataset
 .PHONY: train_model
 train_model:
-    $(PYTHON_INTERPRETER) spacey_falcon_9_project/modeling/train.py
+	$(PYTHON_INTERPRETER) spacey_falcon_9_project/modeling/train.py
 
 ## Make batch predictions
 .PHONY: batch_predict
