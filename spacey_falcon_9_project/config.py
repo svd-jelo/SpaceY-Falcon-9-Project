@@ -6,6 +6,7 @@ raw_dir = root / "data" / "raw"
 interim_dir = root / "data" / "interim"
 external_dir = root / "data" / "external"
 processed_dir = root / "data" / "processed"
+models_dir = root / "models"
 
 # Data Sources
 ll2_url = "https://ll.thespacedevs.com/2.3.0/launches/previous/"

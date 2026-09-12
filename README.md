@@ -15,7 +15,6 @@ becomes: **can we predict, using only publicly available data, whether a Falcon 
 Understanding this is the foundation for estimating a competitive launch price.
 
 
-
 ## Project Organization
 
 ```
@@ -33,7 +32,7 @@ Understanding this is the foundation for estimating a competitive launch price.
 │
 ├── notebooks          <- Jupyter notebooks. Naming convention is a number (for ordering),
 │                         the creator's initials, and a short `-` delimited description, e.g.
-│                         `1.0-jqp-initial-data-exploration`.
+│                         `1.0-cjra-data-collection`.
 │
 ├── pyproject.toml     <- Project configuration file with package metadata for 
 │                         spacey_falcon_9_project and configuration for tools like black
@@ -63,6 +62,9 @@ Understanding this is the foundation for estimating a competitive launch price.
     │   ├── predict.py          <- Code to run model inference with trained models          
     │   └── train.py            <- Code to train models
     │
-    └── plots.py                <- Code to create visualizations
+    └── utils
+        ├── __init__.py
+        ├── metrics.py         <- Code for custom metric for model evaluation
+        └── modeling.py        <- Code to save or load model artifacts
 ```
 
