@@ -16,9 +16,30 @@ PYTHON_INTERPRETER = python
 requirements:
 	$(PYTHON_INTERPRETER) -m pip install -U pip
 	$(PYTHON_INTERPRETER) -m pip install -r requirements.txt
-	
 
+## Create Dataset
+.PHONY: dataset
+dataset:
+    $(PYTHON_INTERPRETER) spacey_falcon_9_project/dataset.py
 
+## Train model over dataset
+.PHONY: train_model
+train_model:
+    $(PYTHON_INTERPRETER) spacey_falcon_9_project/modeling/train.py
+
+## Make batch predictions
+.PHONY: batch_predict
+batch_predict:
+ifdef MODEL_NAME
+	$(PYTHON_INTERPRETER) spacey_falcon_9_project/modeling/predict.py \
+		--model_name $(MODEL_NAME) \
+		$(if $(INPUT_PATH),--input_path $(INPUT_PATH)) \
+		$(if $(OUTPUT_PATH),--output_path $(OUTPUT_PATH)) \
+		$(if $(MODEL_DIR),--model_dir $(MODEL_DIR))
+else
+	@echo "Error: MODEL_NAME is required. Usage: make batch_predict MODEL_NAME=<filename>"
+	@exit 1
+endif
 
 ## Delete all compiled Python files
 .PHONY: clean
