@@ -114,13 +114,9 @@ class ModelTrainer(object):
                     f'\n precision_score: {evaluation['test_score']['precision_score']}'
                     f'\n recall_score: {evaluation['test_score']['recall_score']}')
 
-        logger.info('Retraining with all data')
-        X, y = load_whole_dataset()
-        final_model = self.fit_model(X, y)
-
         logger.info('Save artifacts')
         artifact_interface = ArtifactSaverLoader(models_dir=self.output_filepath)
-        artifact_interface.save_artifact(final_model, artifact_name=self.model_name)
+        artifact_interface.save_artifact(trained_model, artifact_name=self.model_name)
 
         logger.info('Done!')
 
