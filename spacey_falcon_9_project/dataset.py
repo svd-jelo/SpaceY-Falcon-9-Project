@@ -1,4 +1,5 @@
 import json
+import logging
 from pathlib import Path
 import re
 import time
@@ -554,16 +555,35 @@ def create_test_set() -> None | list[Path]:
 #=====================================================================================================================
 
 def main():
+    logger = logging.getLogger('make_dataset')
+
+    logger.info('Downloading launch data from Launch Library 2')
     ll2_raw = download_all_ll2_launches()
+
+    logger.info('Downloading launch data from GCAT')
     download_launch_data_static(gcat_url, file_name_gcat)
+
+    logger.info('Merging launch data from LL2 and GCAT')
     merge_ll2_launch_data(ll2_raw)
     ll2_df = transform_ll2_launches()
     gcat_df = transform_gcat_data()
     merged_df = merge_launch_data(ll2_df, gcat_df)
+
+    logger.info('Adding target attribute \'class\'')
     csv_interim = add_class(merged_df)
+
+    logger.info('Downloading geodata')
     download_layers_data()
+
+    logger.info('Adding proximity attributes')
     add_nearest(csv_interim)
+
+    logger.info('Creating training and test sets')
     create_test_set()
 
+    logger.info('Done!')
+
 if __name__ == "__main__":
+    log_fmt = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    logging.basicConfig(level=logging.INFO, format=log_fmt)
     main()
