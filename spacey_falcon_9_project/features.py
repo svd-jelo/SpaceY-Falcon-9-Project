@@ -25,6 +25,7 @@ def load_training_set():
     y = df["class"]
     return X, y
 
+
 def load_test_set():
     test_set_path = Path(processed_dir / test_set)
     df = pd.read_csv(test_set_path)
@@ -32,11 +33,13 @@ def load_test_set():
     y = df["class"]
     return X, y
 
+
 def load_whole_dataset():
     df = pd.read_csv(processed_dir / dataset_processed)
     X = df.drop(["class"], axis=1)
     y = df["class"]
     return X, y
+
 
 class GMMRBFSimilarity(BaseEstimator, TransformerMixin):
     def __init__(self, n_components=2, random_state=None):
@@ -60,39 +63,40 @@ class GMMRBFSimilarity(BaseEstimator, TransformerMixin):
     def get_feature_names_out(self, names=None):
         return ["Component {} similarity".format(i) for i in range(self.n_components)]
 
+
 class RareCategoryGrouper(BaseEstimator, TransformerMixin):
-    def __init__(self, threshold=20, other_label='Others'):
+    def __init__(self, threshold=20, other_label="Others"):
         self.threshold = threshold
         self.other_label = other_label
 
     def fit(self, X, y=None):
         self.feature_names_in_ = X.columns.to_numpy()
         self.below_threshold_ = np.empty(len(self.feature_names_in_), dtype=np.ndarray)
-        for i,column in enumerate(self.feature_names_in_):
-            self.below_threshold_[i] = X[column].value_counts()[lambda s: s < self.threshold].index.to_numpy()
+        for i, column in enumerate(self.feature_names_in_):
+            self.below_threshold_[i] = (
+                X[column].value_counts()[lambda s: s < self.threshold].index.to_numpy()
+            )
         return self
 
     def transform(self, X):
         X = X.copy()
         self.group_cond_ = np.empty(len(self.feature_names_in_), dtype=np.ndarray)
         features = []
-        for i,column in enumerate(self.feature_names_in_):
+        for i, column in enumerate(self.feature_names_in_):
             self.group_cond_[i] = X[column].isin(self.below_threshold_[i]).to_numpy()
-            features.append(
-                X[column].where(~self.group_cond_[i],
-                                self.other_label)
-            )
+            features.append(X[column].where(~self.group_cond_[i], self.other_label))
 
-        if len(features)==1:
-            return np.column_stack(features).reshape(-1,1)
+        if len(features) == 1:
+            return np.column_stack(features).reshape(-1, 1)
         else:
             return np.column_stack(features)
 
     def get_feature_names_out(self, input_features=None):
         return self.feature_names_in_
 
+
 def build_features() -> ColumnTransformer:
-    encode = OneHotEncoder(sparse_output=False, dtype=int, handle_unknown='ignore')  # For all cats
+    encode = OneHotEncoder(sparse_output=False, dtype=int, handle_unknown="ignore")  # For all cats
     regroup_encode = make_pipeline(RareCategoryGrouper(), encode)  # For orbit and mission_type
     gmmrbf = GMMRBFSimilarity(random_state=random_state)  # For payload_mass
     scale = StandardScaler()  # For all numericals except payload_mass
@@ -108,7 +112,7 @@ def build_features() -> ColumnTransformer:
             ("scale", scale, ["nearest_highway", "nearest_railway", "nearest_coastline"]),
             ("log1p_scale", log1p_scale, ["reused_count"]),
         ],
-        remainder="drop"
+        remainder="drop",
     )
 
     return transformer

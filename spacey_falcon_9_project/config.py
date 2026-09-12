@@ -35,18 +35,18 @@ geodata_urls = [
 ]
 
 # Filenames
-file_name_gcat = 'mcdowell-gcat-launch-data.tsv'
-file_name_ll2 = 'll2-api-2.3.0-launches-previous-merged.json'
-dataset_interim = 'launch-data-table-class.csv'
-dataset_processed = 'dataset-processed.csv'
+file_name_gcat = "mcdowell-gcat-launch-data.tsv"
+file_name_ll2 = "ll2-api-2.3.0-launches-previous-merged.json"
+dataset_interim = "launch-data-table-class.csv"
+dataset_processed = "dataset-processed.csv"
 geodata_paths = {
-        "US roadmap": external_dir / "us_road_map.json",
-        "US railways": external_dir / "us_railways.geojson",
-        "Global coastline": external_dir / "ne_coastline.zip",
-        "Florida coastline": external_dir / "florida_coastline.geojson",
-    }
-training_set = 'training-set.csv'
-test_set = 'test-set.csv'
+    "US roadmap": external_dir / "us_road_map.json",
+    "US railways": external_dir / "us_railways.geojson",
+    "Global coastline": external_dir / "ne_coastline.zip",
+    "Florida coastline": external_dir / "florida_coastline.geojson",
+}
+training_set = "training-set.csv"
+test_set = "test-set.csv"
 
 # Random State config
 random_state = 42

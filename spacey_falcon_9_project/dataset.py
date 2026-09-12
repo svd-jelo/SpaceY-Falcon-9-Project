@@ -31,11 +31,12 @@ from spacey_falcon_9_project.config import (
     training_set,
 )
 
-#=====================================================================================================================
+# =====================================================================================================================
 # DATA COLLECTION
-#=====================================================================================================================
+# =====================================================================================================================
 
-def get_ll2_launches(offset: int) -> None|dict:
+
+def get_ll2_launches(offset: int) -> None | dict:
     """
     Function for making get requests to LL2 API
 
@@ -64,7 +65,8 @@ def get_ll2_launches(offset: int) -> None|dict:
     print("Failed after 3 attempts (504 Server Error)")
     return None
 
-def download_all_ll2_launches() -> None|list[Path]:
+
+def download_all_ll2_launches() -> None | list[Path]:
     """
     :return: list[Path]; file paths to the LL2 launches
     """
@@ -86,7 +88,10 @@ def download_all_ll2_launches() -> None|list[Path]:
         file_paths.append(file_path)
     return file_paths
 
-def download_launch_data_static(url: str, file_name: str, query_params: dict|None = None, headers: dict|None = None) -> None|Path:
+
+def download_launch_data_static(
+    url: str, file_name: str, query_params: dict | None = None, headers: dict | None = None
+) -> None | Path:
     """
     :param url: str; URL to download the data from
     :param file_name: str; File name to save the data to
@@ -117,8 +122,11 @@ def download_launch_data_static(url: str, file_name: str, query_params: dict|Non
         print("Error: {}".format(e))
         return None
 
+
 # Partial Data Transformation - Merging LL2 launch, GCAT launch, and Course-provided launch data
-def merge_ll2_launch_data(json_paths: None|list[Path], merged_path: None|Path = None) -> None|Path:
+def merge_ll2_launch_data(
+    json_paths: None | list[Path], merged_path: None | Path = None
+) -> None | Path:
     """
     Function to merge LL2 launches that were extracted and downloaded with the download_all_ll2_launches() function
     :param json_paths: list[Path]; file paths to the paginated files. Particularly, the returned output of the
@@ -132,18 +140,19 @@ def merge_ll2_launch_data(json_paths: None|list[Path], merged_path: None|Path = 
 
     merged = []
     for path in json_paths:
-        with open(path, 'r') as f:
+        with open(path, "r") as f:
             launch_page = json.load(f)
-        merged.extend(launch_page['results'])
+        merged.extend(launch_page["results"])
 
     if merged_path is None:
         interim_dir.mkdir(parents=True, exist_ok=True)
         merged_path = interim_dir / file_name_ll2
 
-    with open(merged_path, 'w') as f:
+    with open(merged_path, "w") as f:
         json.dump(merged, f)
 
     return merged_path
+
 
 def get_path(d: dict, path: str) -> Any:
     """
@@ -159,6 +168,7 @@ def get_path(d: dict, path: str) -> Any:
             d = d[0]
         d = d.get(key) if isinstance(d, dict) else None
     return d
+
 
 def transform_ll2_launches(json_path: None | str | Path = None) -> pd.DataFrame:
     """
@@ -216,12 +226,15 @@ def transform_ll2_launches(json_path: None | str | Path = None) -> pd.DataFrame:
     data_df = data_df.dropna(subset="launch_designator")
 
     # Convert landing success column to str
-    data_df['landing_success'] = data_df['landing_success'].map(str)
+    data_df["landing_success"] = data_df["landing_success"].map(str)
 
     # Regroup: "Block 4", "v1.0", "v1.1" -> "Legacy"
-    data_df['block'] = data_df['block'].map(lambda x: "Legacy" if x in ['Block 4', 'Full Thrust', 'v1.0', 'v1.1'] else x)
+    data_df["block"] = data_df["block"].map(
+        lambda x: "Legacy" if x in ["Block 4", "Full Thrust", "v1.0", "v1.1"] else x
+    )
 
     return data_df.reset_index(drop=True)
+
 
 def transform_gcat_data(gcat_path: None | str | Path = None) -> pd.DataFrame:
     """
@@ -260,6 +273,7 @@ def transform_gcat_data(gcat_path: None | str | Path = None) -> pd.DataFrame:
 
     return gcat_df.reset_index(drop=True)
 
+
 def merge_launch_data(ll2_df: pd.DataFrame, gcat_df: pd.DataFrame) -> pd.DataFrame:
     """
     Function to merge transformed ll2 launches data, transformed GCAT launch data, and transformed course data.
@@ -273,21 +287,26 @@ def merge_launch_data(ll2_df: pd.DataFrame, gcat_df: pd.DataFrame) -> pd.DataFra
     """
 
     # Merge LL2 and GCAT
-    merged_df = ll2_df.merge(gcat_df, on='launch_designator', how='inner', validate='1:1')
+    merged_df = ll2_df.merge(gcat_df, on="launch_designator", how="inner", validate="1:1")
 
-    mask = (merged_df['launch_date_x'] == merged_df['launch_date_y'])
+    mask = merged_df["launch_date_x"] == merged_df["launch_date_y"]
     if mask.all():
-        merged_df['launch_date'] = merged_df['launch_date_x']
-        merged_df = merged_df.drop(['launch_date_x', 'launch_date_y'], axis=1)
+        merged_df["launch_date"] = merged_df["launch_date_x"]
+        merged_df = merged_df.drop(["launch_date_x", "launch_date_y"], axis=1)
     else:
-        raise Exception('Mismatch: launch_date in LL2 Launches does not match with launch_date in GCAT Launches')
+        raise Exception(
+            "Mismatch: launch_date in LL2 Launches does not match with launch_date in GCAT Launches"
+        )
 
     # Drop launches with overlapping dates
-    counts = merged_df['launch_date'].value_counts()
-    duplicate_dates = merged_df[merged_df['launch_date'].map(lambda x: x in counts[counts>1].index)]
+    counts = merged_df["launch_date"].value_counts()
+    duplicate_dates = merged_df[
+        merged_df["launch_date"].map(lambda x: x in counts[counts > 1].index)
+    ]
     merged_df = merged_df.drop(index=duplicate_dates.index)
 
     return merged_df.reset_index(drop=True)
+
 
 def add_class(launch_df: pd.DataFrame, save_path: None | str | Path = None) -> None | Path:
     """
@@ -310,7 +329,7 @@ def add_class(launch_df: pd.DataFrame, save_path: None | str | Path = None) -> N
         :return outcome: int; if the entry is a landing success, `outcome=1`; otherwise, `outcome=0`.
         """
 
-        if entry=='True':
+        if entry == "True":
             landing_outcome = 1
         else:
             landing_outcome = 0
@@ -334,9 +353,10 @@ def add_class(launch_df: pd.DataFrame, save_path: None | str | Path = None) -> N
 
     return save_path
 
-#=====================================================================================================================
+
+# =====================================================================================================================
 # GEODATA -- Addition of columns for distance to nearest highway, railway, and coastline
-#=====================================================================================================================
+# =====================================================================================================================
 def download_layers_data() -> dict[str, Path]:
     """
     Function for downloading geodata for highways, railways, and coastlines. File path where data is downloaded
@@ -360,6 +380,7 @@ def download_layers_data() -> dict[str, Path]:
                         f.write(chunk)
 
     return geodata_paths
+
 
 def add_nearest_highway(data: pd.DataFrame, us_roadmap: None | str | Path = None) -> pd.DataFrame:
     """
@@ -494,7 +515,8 @@ def add_nearest_coastline(
 
     return data
 
-def add_nearest(csv_path: None | str | Path, save_path: None | str | Path = None) -> None|Path:
+
+def add_nearest(csv_path: None | str | Path, save_path: None | str | Path = None) -> None | Path:
     """
     Utility function to run `add_nearest_highway`, `add_nearest_railway`, and `add_nearest_coastline`
     functions on the csv file containing the dataset.
@@ -529,9 +551,11 @@ def add_nearest(csv_path: None | str | Path, save_path: None | str | Path = None
 
     return save_path
 
-#=====================================================================================================================
+
+# =====================================================================================================================
 # CREATE TEST SET
-#=====================================================================================================================
+# =====================================================================================================================
+
 
 def create_test_set() -> None | list[Path]:
     """
@@ -544,47 +568,52 @@ def create_test_set() -> None | list[Path]:
 
     try:
         df = pd.read_csv(csv_path, na_filter=False)
-        train_df, test_df = train_test_split(df, test_size=0.2, random_state=random_state, stratify=df['class'])
+        train_df, test_df = train_test_split(
+            df, test_size=0.2, random_state=random_state, stratify=df["class"]
+        )
         train_df.to_csv(train_set_path, index=False)
         test_df.to_csv(test_set_path, index=False)
     except FileNotFoundError as e:
         print("Please check if file exists: m{}".format(e))
         return None
 
-#=====================================================================================================================
+
+# =====================================================================================================================
 # MAIN
-#=====================================================================================================================
+# =====================================================================================================================
+
 
 def main():
-    logger = logging.getLogger('make_dataset')
+    logger = logging.getLogger("make_dataset")
 
-    logger.info('Downloading launch data from Launch Library 2')
+    logger.info("Downloading launch data from Launch Library 2")
     ll2_raw = download_all_ll2_launches()
 
-    logger.info('Downloading launch data from GCAT')
+    logger.info("Downloading launch data from GCAT")
     download_launch_data_static(gcat_url, file_name_gcat)
 
-    logger.info('Merging launch data from LL2 and GCAT')
+    logger.info("Merging launch data from LL2 and GCAT")
     merge_ll2_launch_data(ll2_raw)
     ll2_df = transform_ll2_launches()
     gcat_df = transform_gcat_data()
     merged_df = merge_launch_data(ll2_df, gcat_df)
 
-    logger.info('Adding target attribute \'class\'')
+    logger.info("Adding target attribute 'class'")
     csv_interim = add_class(merged_df)
 
-    logger.info('Downloading geodata')
+    logger.info("Downloading geodata")
     download_layers_data()
 
-    logger.info('Adding proximity attributes')
+    logger.info("Adding proximity attributes")
     add_nearest(csv_interim)
 
-    logger.info('Creating training and test sets')
+    logger.info("Creating training and test sets")
     create_test_set()
 
-    logger.info('Done!')
+    logger.info("Done!")
+
 
 if __name__ == "__main__":
-    log_fmt = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    log_fmt = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     logging.basicConfig(level=logging.INFO, format=log_fmt)
     main()

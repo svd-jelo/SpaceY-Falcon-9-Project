@@ -17,7 +17,7 @@ class BatchInference(object):
         self.model_name = model_name
 
     @staticmethod
-    def _load_path(path: str|Path) -> Path:
+    def _load_path(path: str | Path) -> Path:
         if isinstance(path, str):
             pathlib_path = Path(path)
         elif isinstance(path, Path):
@@ -29,8 +29,8 @@ class BatchInference(object):
     def load_data(self):
         if self.input_path.is_file():
             data = pd.read_csv(self.input_path)
-            if 'class' in data.columns:
-                data = data.drop(columns='class')
+            if "class" in data.columns:
+                data = data.drop(columns="class")
         else:
             raise FileNotFoundError("Input path does not exist")
         return data
@@ -48,7 +48,7 @@ class BatchInference(object):
         return self.output_path.is_file()
 
     def predict(self):
-        logger = logging.getLogger('batch_predict')
+        logger = logging.getLogger("batch_predict")
 
         logger.info(f"Loading data from {self.input_path}")
         data_df = self.load_data()
@@ -64,34 +64,35 @@ class BatchInference(object):
 
         logger.info(f"Finished predicting on {data_df.shape[0]} samples")
 
+
 if __name__ == "__main__":
-    log_fmt = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    log_fmt = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     logging.basicConfig(level=logging.INFO, format=log_fmt)
 
     parser = argparse.ArgumentParser(description="Run batch inference.")
     parser.add_argument(
         "--input_path",
         type=str,
-        default=str(processed_dir.joinpath('sample_input.csv')),
-        help="Path to input data CSV"
+        default=str(processed_dir.joinpath("sample_input.csv")),
+        help="Path to input data CSV",
     )
     parser.add_argument(
         "--output_path",
         type=str,
-        default=str(processed_dir.joinpath('sample_output.csv')),
-        help="Path to output data CSV"
+        default=str(processed_dir.joinpath("sample_output.csv")),
+        help="Path to output data CSV",
     )
     parser.add_argument(
         "--model_dir",
         type=str,
         default=str(models_dir),
-        help="Directory where the model artifact is stored"
+        help="Directory where the model artifact is stored",
     )
     parser.add_argument(
         "--model_name",
         type=str,
         required=True,
-        help="Filename of the model artifact (e.g., svc-2026-09-11T14-30-00Z.joblib)"
+        help="Filename of the model artifact (e.g., svc-2026-09-11T14-30-00Z.joblib)",
     )
 
     args = parser.parse_args()
@@ -100,7 +101,7 @@ if __name__ == "__main__":
         input_path=args.input_path,
         output_path=args.output_path,
         model_path=args.model_dir,
-        model_name=args.model_name
+        model_name=args.model_name,
     )
 
     predictor.predict()

@@ -38,7 +38,8 @@ The needed attributes in creating the dataset were obtained from various sources
       <figcaption>Figure 1: Histogram of Payload Mass.</figcaption>
    </figure>
 </div>
-
+<p> </p>
+<br>
 <div align="center">
    <figure>
       <img src="reports/figures/columntransformer.png" alt="columntransformer.png">
@@ -70,6 +71,11 @@ A Support Vector Classifier has been selected, having an average precision $\tex
 ### Prerequisites
 - Python 3.14
 - conda 26.3.2
+
+### Clone
+```commandline
+git clone https://github.com/svd-jelo/SpaceY-Falcon-9-Project.git
+```
 
 ### Dependencies
 To be able to run the scripts, create a virtual environment and install the dependencies specified in the 
